@@ -1,5 +1,5 @@
 -- {[ Viewpoint Module ]}
--- ver 0.78.0
+-- ver 0.79.0
 -- By josiahgame/JRmcnugget
 
 -- pwease do not look at me! i am unfinished, owo
@@ -177,10 +177,7 @@ end
 
 -- local helpers
 local function isGrounded(humanoid)
-	return not (
-		humanoid:GetState() == Enum.HumanoidStateType.Jumping
-		or humanoid:GetState() == Enum.HumanoidStateType.Freefall
-	)
+	return not (humanoid:GetState() == Enum.HumanoidStateType.Jumping or humanoid:GetState() == Enum.HumanoidStateType.Freefall)
 end
 
 local function isSeated(humanoid)

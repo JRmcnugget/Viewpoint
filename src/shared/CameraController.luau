@@ -406,27 +406,21 @@ function camController:updateCamRoot(dt)
 
 		self:updateRootY(dt, rootTargetY)
 
-		local targetHorizontal = freeroamCheck and cameraHorizontalPos
-			or cameraHorizontalPos + (cameraRotCF.RightVector * self.cameraHorizontalOffsetShiftLock)
+		local targetHorizontal = freeroamCheck and cameraHorizontalPos or cameraHorizontalPos + (cameraRotCF.RightVector * self.cameraHorizontalOffsetShiftLock)
 		local desiredPos = Vector3.new(targetHorizontal.X, cameraY, targetHorizontal.Z)
 
-		local verticalOrigin = playerHRP.Position
+		local horizontalOrigin = playerHRP.Position
+		local dirHorizontal = (Vector3.new(desiredPos.X, playerHRP.Position.Y, desiredPos.Z) - horizontalOrigin)
+		local rootOccludeHorizontal = world:Spherecast(horizontalOrigin, cameraRootColliderRadius, dirHorizontal, rayParams)
+		local rootOccludeHorizontalPos = rootOccludeHorizontal and (horizontalOrigin + (dirHorizontal.Unit * rootOccludeHorizontal.Distance)) or nil
+		local finalHorizontalPos = targetHorizontal
+
+		local verticalOrigin = Vector3.new(finalHorizontalPos.X, playerHRP.Position.Y, finalHorizontalPos.Z)
 		local dirVertical = (Vector3.new(playerHRP.Position.X, cameraY, playerHRP.Position.Z) - verticalOrigin)
 		local rootOccludeVertical = world:Spherecast(verticalOrigin, cameraRootColliderRadius, dirVertical, rayParams)
-		local rootOccludeVerticalPos = rootOccludeVertical
-				and (verticalOrigin + (dirVertical.Unit * rootOccludeVertical.Distance))
-			or nil
+		local rootOccludeVerticalPos = rootOccludeVertical and (verticalOrigin + (dirVertical.Unit * rootOccludeVertical.Distance)) or nil
 		local finalVerticalPos = rootOccludeVerticalPos and rootOccludeVerticalPos.Y or cameraY
 
-		local horizontalOrigin = Vector3.new(playerHRP.Position.X, finalVerticalPos, playerHRP.Position.Z)
-		local dirHorizontal = (Vector3.new(desiredPos.X, finalVerticalPos, desiredPos.Z) - horizontalOrigin)
-		local rootOccludeHorizontal =
-			world:Spherecast(horizontalOrigin, cameraRootColliderRadius, dirHorizontal, rayParams)
-		local rootOccludeHorizontalPos = rootOccludeHorizontal
-				and (horizontalOrigin + (dirHorizontal.Unit * rootOccludeHorizontal.Distance))
-			or nil
-
-		local finalHorizontalPos = targetHorizontal
 		if rootOccludeHorizontalPos then
 			local goal = getHorizontalDir(rootOccludeHorizontalPos)
 			local current = getHorizontalDir(cameraRoot.Position)

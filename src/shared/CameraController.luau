@@ -1,4 +1,4 @@
--- {[ CameraController Module ]}
+-- {[ Viewpoint Module ]}
 -- ver 0.78.0
 -- By josiahgame/JRmcnugget
 
@@ -9,7 +9,6 @@ local userInput = game:GetService("UserInputService")
 local collectionServ = game:GetService("CollectionService")
 local runServ = game:GetService("RunService")
 local tweenServ = game:GetService("TweenService")
-local debris = game:GetService("Debris")
 local world = workspace
 
 local debugger = game.ReplicatedStorage:FindFirstChild("DebugMenu")
@@ -34,6 +33,8 @@ local playerHRP = nil
 local playerIsDead = false
 local playerHumanoid = nil
 local playerParts = {}
+
+local playerInstancingConnections = {}
 
 camController.playerLookAtSpd = 8
 camController.playerLookAtSpdLocked = 20
@@ -228,14 +229,24 @@ function camController:Init(plr: Player)
 			playerIsDead = true
 		end)
 
-		table.clear(playerParts)
+		table.clear(playerParts) -- remove stale references
 
+		--instance all playerparts that are added upon the character's immediate creation
 		for c, i in pairs(char:GetDescendants()) do
 			if i.ClassName == "MeshPart" or i.ClassName == "Part" then
 				table.insert(playerParts, i)
-				table.insert(rayExclude, i)
+				i:AddTag(ignoreTag)
 			end
 		end
+
+		--instance any parts that are added further to the character
+		local instanceWatcher = playerCharacter.DescendantAdded:Connect(function(obj)
+			if obj:IsA("BasePart") then
+				table.insert(playerParts, obj)
+				obj:AddTag(ignoreTag)
+			end
+		end)
+		table.insert(playerInstancingConnections, instanceWatcher) -- does not automatically disconnect so we have to keep track
 
 		camera.CameraSubject = cameraRoot
 		camera.CameraType = Enum.CameraType.Scriptable
@@ -248,13 +259,6 @@ function camController:Init(plr: Player)
 	player.CharacterRemoving:Connect(function(char)
 		self.IsInitialized = false
 
-		for c, i in pairs(char:GetDescendants()) do
-			if i.ClassName == "MeshPart" or i.ClassName == "Part" then
-				local foundPos = table.find(rayExclude, i)
-				if foundPos then table.remove(rayExclude, foundPos) end
-			end
-		end
-
 		playerCharacter = nil
 		playerHumanoid = nil
 		playerHRP = nil
@@ -264,6 +268,8 @@ function camController:Init(plr: Player)
 			cameraRoot:Destroy()
 			cameraRoot = nil
 		end
+
+		print(playerInstancingConnections)
 	end)
 
 	userInput.InputBegan:Connect(function(input, processed)

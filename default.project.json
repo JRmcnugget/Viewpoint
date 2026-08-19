@@ -15,6 +15,20 @@
       }
     },
 
+    "Lighting": {
+      "$properties": {
+        "Ambient": [
+          0,
+          0,
+          0
+        ],
+        "Brightness": 3,
+        "GlobalShadows": true,
+        "Outlines": false,
+        "Technology": "Future"
+      }
+    },
+
     "Workspace": {
       "$properties": {
         "FilteringEnabled": true

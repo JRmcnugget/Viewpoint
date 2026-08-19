@@ -1,0 +1,593 @@
+-- {[ CameraController Module ]}
+-- ver 0.78.0
+-- By josiahgame/JRmcnugget
+
+-- pwease do not look at me! i am unfinished, owo
+
+local Players = game:GetService("Players")
+local userInput = game:GetService("UserInputService")
+local collectionServ = game:GetService("CollectionService")
+local runServ = game:GetService("RunService")
+local tweenServ = game:GetService("TweenService")
+local debris = game:GetService("Debris")
+local world = workspace
+
+local debugger = game.ReplicatedStorage:FindFirstChild("DebugMenu")
+if debugger then
+	debugger = require(debugger)
+end
+
+local camController = {}
+
+camController.IsInitialized = false
+
+local cameraZoom = 15
+local cameraOcclusionForcedZoom = nil
+local cameraTarget = CFrame.new(0,0,0)
+local actionPerformTick = os.clock() - 3
+local mouseRayDistance = 5000
+
+--player
+local player = nil
+local playerCharacter = nil
+local playerHRP = nil
+local playerIsDead = false
+local playerHumanoid = nil
+local playerParts = {}
+
+camController.playerLookAtSpd = 8
+camController.playerLookAtSpdLocked = 20
+camController.playerInvisSmoothSpd = 15
+
+--camera
+local camera = nil
+local cameraRoot = nil
+local cameraRootDebugOutline = nil
+
+local cameraHorizontalPos = Vector3.new(0,0,0)
+local cameraXVel = Vector3.new(0,0,0)
+
+camController.cameraXFreeroamRadial = 1
+camController.cameraXFreeroamSpd = 0.5
+camController.cameraXFreeroamSpdDistInc = 0.1
+
+camController.cameraXLockedRadial = 0.5
+camController.cameraXLockedSpd = 0.3
+camController.cameraXLockedSpdDistInc = 0.25
+
+camController.cameraXMinSpd = 0.12
+camController.cameraXMaxDistFreeroam = 6
+camController.cameraXMaxDistLocked = 2.5
+
+camController.rootOccludedSpd = 35
+
+camController.cameraXPredict = false
+
+local cameraColliderRadius = 0.15
+local cameraRootColliderRadius = 0.4
+
+local zoomSmoothBaseSpd = 10
+local zoomSmooth = cameraZoom
+local zoomAbsoluteMin = 0.5
+camController.zoomMax = 100
+camController.zoomMin = 12
+camController.zoomMaxLocked = 9
+camController.zoomMinLocked = 5
+camController.zoomSens = 1
+camController.zoomSpdIn = 1.1
+camController.zoomSpdOut = 1.3
+camController.zoomInverted = true
+
+local invisHighlight = nil
+camController.invisHighlightFillMin = 0.8
+camController.invisHighlightOutlineMin = 0.4
+camController.invisHighlightMax = 1
+camController.useInvisHighlight = true
+
+camController.plrInvisThreshold = 6
+camController.plrFullInvisThreshold = 3
+camController.plrInvisMax = 0.99
+camController.plrInvisMin = 0
+
+camController.cameraFreeRoamThres = 2
+
+camController.cameraYOffsetFreeRoam = 3.5
+camController.cameraYOffsetShiftLock = 3
+
+camController.cameraXOffsetShiftLock = 2.5
+
+local cameraYRotCap = 75
+local cameraY = 0
+local cameraYLastGroundedPos = 0
+local cameraYVel = 0
+
+camController.cameraYUpThres = 10
+camController.cameraYDownThres = 3.5
+camController.cameraLockedYUpThres = 9
+camController.cameraLockedYDownThres = 2
+
+camController.cameraYMaxDistUp = 10
+camController.cameraYMaxDistDown = 8
+camController.cameraLockedYMaxDistUp = 9
+camController.cameraLockedYMaxDistDown = 5
+
+camController.cameraYGrndSpdBase = 0.2
+
+camController.cameraYAsnSpdBase = 0.35
+camController.cameraYAsnSpdInc = 0.008
+
+camController.cameraYDsnSpdBase = 0.4
+camController.cameraYDsnSpdInc = 0.005
+
+local cameraYSpd = 0
+local cameraYSpdMax = 0.65
+local cameraYSpdMin = 0.05
+
+local cameraYExitedBounds = false
+
+local cameraRotX = 0
+local cameraRotY = 0
+local cameraRotCF = CFrame.new(0,0,0)
+camController.cameraSensitivityX = 0.5
+camController.cameraSensitivityY = 0.5
+
+local cameraIsFreeroam = true
+local cameraMouseLocked = true
+local cameraOverride = false
+camController.cameraInvertedX = true
+camController.cameraInvertedY = true
+camController.cameraSmoothingYEnabled = true
+camController.cameraSmoothingXEnabled = true
+
+camController.debugRender = false
+
+--occlusion check params
+local rayParams = RaycastParams.new()
+local rayExclude = {}
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.IgnoreWater = true
+rayParams.RespectCanCollide = true
+
+local ignoreTag = "CameraIgnore"
+
+-- local helpers
+local function isGrounded(humanoid)
+	return not (humanoid:GetState() == Enum.HumanoidStateType.Jumping or humanoid:GetState() == Enum.HumanoidStateType.Freefall)
+end
+
+local function isSeated(humanoid)
+	return (humanoid:GetState() == Enum.HumanoidStateType.Seated)
+end
+
+local function getExponentialScale(scale, dt)
+	return 1 - math.exp(-scale * dt)
+end
+
+-- exponential math to keep consistent scale across framerates. smaller framerate = bigger scale to match, and vise versa
+local function lerp(val, goal, scale, dt)
+	scale = getExponentialScale(scale, dt) 
+	return val + (goal - val) * scale
+end
+
+local function getHorizontalDir(vec)
+	return Vector3.new(vec.X, 0, vec.Z)
+end
+
+--init
+function camController:Init(plr: Player)
+	player = plr
+
+	player.CharacterAdded:Connect(function(char)
+
+		local loaded = plr:HasAppearanceLoaded()
+
+		while not loaded do
+			--if char.Parent ~= world then return end
+			loaded = plr:HasAppearanceLoaded()
+			task.wait()
+		end
+
+		playerIsDead = false
+
+		playerCharacter = char
+		playerHumanoid = char:WaitForChild("Humanoid")
+		playerHRP = char:WaitForChild("HumanoidRootPart")
+		camera = world.CurrentCamera
+
+		cameraRoot = Instance.new('Part')
+		cameraRoot.Parent = playerCharacter
+		cameraRoot.Anchored = true
+		cameraRoot.CanCollide = false
+		cameraRoot.CanTouch = false
+		cameraRoot.CanQuery = false
+		cameraRoot.Name = "CameraRoot"
+		cameraRoot.Position = Vector3.new(playerHRP.Position.X, playerHRP.Position.Y, playerHRP.Position.Z)
+		cameraRoot.Transparency = 1
+		cameraRoot.CastShadow = false
+		cameraRoot.Size = Vector3.new(1,1,1)
+		cameraRoot.Material = Enum.Material.Plastic
+		cameraRoot.Color = Color3.fromRGB(255,255,255)
+
+		cameraRootDebugOutline = Instance.new("SelectionSphere")
+		cameraRootDebugOutline.Color3 = Color3.fromRGB(255,255,255)
+		cameraRootDebugOutline.Adornee = cameraRoot
+		cameraRootDebugOutline.Parent = cameraRoot
+		cameraRootDebugOutline.Transparency = 1
+
+		cameraY = playerHRP.Position.Y + self.cameraYOffsetFreeRoam
+		cameraHorizontalPos = getHorizontalDir(playerHRP.Position)
+		cameraYLastGroundedPos = cameraY
+
+		invisHighlight = Instance.new('Highlight')
+		invisHighlight.Parent = playerCharacter
+		invisHighlight.FillColor = Color3.fromRGB(255,255,255)
+		invisHighlight.FillTransparency = 1
+		invisHighlight.OutlineTransparency = 1
+
+		playerHumanoid.Died:Connect(function()
+			playerIsDead = true
+		end)
+
+		table.clear(playerParts)
+
+		for c, i in pairs(char:GetDescendants()) do
+			if i.ClassName == "MeshPart" or i.ClassName == "Part" then
+				table.insert(playerParts, i)
+				table.insert(rayExclude, i)
+			end
+		end
+
+		camera.CameraSubject = cameraRoot
+		camera.CameraType = Enum.CameraType.Scriptable
+		rayParams.FilterDescendantsInstances = rayExclude
+		userInput.MouseBehavior = Enum.MouseBehavior.LockCenter
+
+		self.IsInitialized = true
+	end)
+
+	player.CharacterRemoving:Connect(function(char)
+		self.IsInitialized = false
+
+		for c, i in pairs(char:GetDescendants()) do
+			if i.ClassName == "MeshPart" or i.ClassName == "Part" then
+				local foundPos = table.find(rayExclude, i)
+				if foundPos then table.remove(rayExclude, foundPos) end
+			end
+		end
+
+		playerCharacter = nil
+		playerHumanoid = nil
+		playerHRP = nil
+		camera = nil
+
+		if cameraRoot then
+			cameraRoot:Destroy()
+			cameraRoot = nil
+		end
+	end)
+
+	userInput.InputBegan:Connect(function(input, processed)
+		self:readInput(input, processed)
+	end)
+	userInput.InputChanged:Connect(function(input, processed)
+		self:readInput(input, processed)
+	end)
+	userInput.InputEnded:Connect(function(input, processed)
+		self:readInput(input, processed)
+	end)
+
+	local alreadyTagged = collectionServ:GetTagged(ignoreTag)
+	for c, i in pairs(alreadyTagged) do
+		table.insert(rayExclude, i)
+	end
+
+	collectionServ:GetInstanceAddedSignal(ignoreTag):Connect(function(obj)
+		self:instanceNew(obj)
+	end)
+	collectionServ:GetInstanceRemovedSignal(ignoreTag):Connect(function(obj)
+		self:instanceRemove(obj)
+	end)
+
+	runServ:BindToRenderStep("updCamera", Enum.RenderPriority.Camera.Value, function(dt)
+		self:updateCam(dt)
+	end)
+
+	if debugger then
+		debugger:Init(plr)
+		debugger:createWatcher("cameraRootPos", function() return string.format("%.2f, %.2f, %.2f", cameraRoot.Position.X, cameraRoot.Position.Y, cameraRoot.Position.Z)  end)
+		debugger:createWatcher("cameraIsFreeroam", function() return cameraIsFreeroam end)
+		debugger:createWatcher("cameraMouseLocked", function() return cameraMouseLocked end)
+		debugger:createWatcher("cameraZoom", function() return cameraZoom end)
+		debugger:createWatcher("cameraOcclusionForcedZoom", function() return cameraOcclusionForcedZoom end)
+		debugger:createWatcher("cameraExccededYBounds", function() return cameraYExitedBounds end)
+	end
+end
+
+--main
+function camController:updateCam(dt)
+	if self.IsInitialized then
+
+		self:updateCamRot()
+
+		self:createCamTarget() -- create camera reference to avoid issues with using real camera's position with interpolation
+
+		self:updateCamRoot(dt)
+
+		camera.CFrame = self:createCameraFinal(dt)
+
+		self:applyInvis(dt)
+
+		self:playerLookAt(dt)
+
+		self:debugRenderer()
+
+	end
+end
+
+--methods
+function camController:createCameraFinal(dt)
+	local occluded = self:checkOcclusion()
+	local max = cameraIsFreeroam and self.zoomMax or self.zoomMaxLocked
+	local zoomAmount = math.clamp((occluded and cameraOcclusionForcedZoom or cameraZoom), zoomAbsoluteMin, max) -- if occluded, use occluded zoom, else use user zoom. capped from first person zoom and max camera zoom
+	local isZoomOut = (zoomAmount>zoomSmooth) and true or false -- if player zoom is bigger than zoomSmooth they are zoooming out (as zoomSmooth will trail behind due to lerp)
+	local zoomSmoothSpd = not isZoomOut and zoomSmoothBaseSpd*self.zoomSpdIn or zoomSmoothBaseSpd*self.zoomSpdOut -- if camera is in first person, use the first person zoom speed. else, if player is not zooming out use zoominspeed, if zooming out use zoomout speed
+	zoomSmooth = (not occluded or isZoomOut or (not cameraIsFreeroam and zoomSmooth > max)) and lerp(zoomSmooth, zoomAmount, zoomSmoothSpd, dt) or zoomAmount -- if camera is not occluded or not zooming out, or the camera is forced first person, use lerp, otherwise snap to zoomamount without lerp. allows the camera to smooth out in all situations
+
+	local cameraSmoothOffset = cameraRotCF * Vector3.new(0, 0, zoomSmooth) 
+	return CFrame.new(cameraRoot.Position + cameraSmoothOffset, cameraRoot.Position)
+end
+
+function camController:updateCamRoot(dt)
+	if not playerIsDead then
+		local freeroamCheck = (cameraIsFreeroam or isSeated(playerHumanoid))
+
+		local radial = freeroamCheck and self.cameraXFreeroamRadial or self.cameraXLockedRadial
+		local baseSpd = freeroamCheck and self.cameraXFreeroamSpd or self.cameraXLockedSpd
+		local spdIncrement = freeroamCheck and self.cameraXFreeroamSpdDistInc or self.cameraXLockedSpdDistInc
+		local maxDist = freeroamCheck and self.cameraXMaxDistFreeroam or self.cameraXMaxDistLocked
+
+		self:updateRootHorizontal(dt, radial, baseSpd, spdIncrement, maxDist)
+
+		local offset = math.abs(freeroamCheck and self.cameraYOffsetFreeRoam or self.cameraYOffsetShiftLock)
+		local rootTargetY = playerHRP.Position.Y + offset
+
+		self:updateRootY(dt, rootTargetY)
+		
+		local targetHorizontal = freeroamCheck and cameraHorizontalPos or cameraHorizontalPos + (cameraRotCF.RightVector * self.cameraXOffsetShiftLock)
+		local desiredPos = Vector3.new(targetHorizontal.X, cameraY, targetHorizontal.Z)
+		
+		local verticalOrigin = playerHRP.Position
+		local dirVertical = (Vector3.new(playerHRP.Position.X, cameraY, playerHRP.Position.Z)-verticalOrigin)
+		local rootOccludeVertical = world:Spherecast(verticalOrigin, cameraRootColliderRadius, dirVertical, rayParams)
+		local rootOccludeVerticalPos = rootOccludeVertical and (verticalOrigin + (dirVertical.Unit*rootOccludeVertical.Distance)) or nil
+		local finalVerticalPos = rootOccludeVerticalPos and rootOccludeVerticalPos.Y or cameraY
+		
+		local horizontalOrigin = Vector3.new(playerHRP.Position.X, finalVerticalPos, playerHRP.Position.Z)
+		local dirHorizontal = (Vector3.new(desiredPos.X, finalVerticalPos, desiredPos.Z)-horizontalOrigin)
+		local rootOccludeHorizontal = world:Spherecast(horizontalOrigin, cameraRootColliderRadius, dirHorizontal, rayParams)
+		local rootOccludeHorizontalPos = rootOccludeHorizontal and (horizontalOrigin + (dirHorizontal.Unit*rootOccludeHorizontal.Distance)) or nil
+
+		local finalHorizontalPos = targetHorizontal
+		if rootOccludeHorizontalPos then
+			local goal = getHorizontalDir(rootOccludeHorizontalPos)
+			local current = getHorizontalDir(cameraRoot.Position)
+			finalHorizontalPos = current:Lerp(goal, getExponentialScale(self.rootOccludedSpd, dt))
+		end
+		
+		if rootOccludeVerticalPos then
+			local goal = rootOccludeVerticalPos.Y
+			local current = cameraRoot.Position.Y
+			finalVerticalPos = lerp(current, goal, self.rootOccludedSpd, dt)
+		end
+		
+		local finalPos = Vector3.new(finalHorizontalPos.X, finalVerticalPos, finalHorizontalPos.Z)
+
+		cameraRoot.Position = finalPos
+	end
+end
+
+function camController:updateRootHorizontal(dt, radial, baseSpd, spdInc, maxDist)
+	local lastPos = cameraHorizontalPos
+	local hrpPos = getHorizontalDir(playerHRP.Position)
+	if self.cameraSmoothingXEnabled then
+		local rootPos = getHorizontalDir(cameraRoot.Position) 
+		local dir = (hrpPos-cameraHorizontalPos)
+		if dir then
+			local target
+			local dist = 0
+
+			if dir.Magnitude > maxDist then
+				dist = (dir.Magnitude - maxDist)
+				cameraHorizontalPos = cameraHorizontalPos + (dir.Unit * dist)
+			end
+
+			if dir.Magnitude > radial then
+				dist = (dir.Magnitude - radial)
+				target = cameraHorizontalPos + (dir.Unit*dist)
+			end
+
+			if not target then target = cameraHorizontalPos end
+
+			local spd = math.clamp(baseSpd - math.abs(dist*spdInc), self.cameraXMinSpd, baseSpd)
+
+			cameraHorizontalPos, cameraXVel = tweenServ:SmoothDamp(cameraHorizontalPos, target, cameraXVel, spd, nil, dt)
+		end
+	else
+		cameraHorizontalPos = hrpPos
+	end
+end
+
+function camController:updateRootY(dt, targetY)
+	local isGrounded = isGrounded(playerHumanoid)
+
+	if self.cameraSmoothingYEnabled then
+		local YUpThres = cameraIsFreeroam and self.cameraYUpThres or self.cameraLockedYUpThres
+		local YDownThres = cameraIsFreeroam and self.cameraYDownThres or self.cameraLockedYDownThres
+		local YBoundsUp = cameraYLastGroundedPos + math.abs(YUpThres)
+		local YBoundsDown = cameraYLastGroundedPos - math.abs(YDownThres)
+
+		local distanceY = targetY - cameraY
+		local isAscending = (distanceY > 0)
+
+		if isGrounded then 
+			cameraYSpd = self.cameraYGrndSpdBase
+			cameraYLastGroundedPos = targetY
+			cameraYExitedBounds = false
+		elseif distanceY ~= 0 then
+			cameraYSpd = isAscending and (self.cameraYAsnSpdBase - (math.abs(distanceY)*self.cameraYAsnSpdInc)) or (self.cameraYDsnSpdBase - (math.abs(distanceY)*self.cameraYDsnSpdInc))
+			if (targetY > YBoundsUp) or (targetY < YBoundsDown) then
+				cameraYExitedBounds = true
+			end
+		end
+
+		cameraYSpd = math.clamp(cameraYSpd, cameraYSpdMin, cameraYSpdMax)
+
+		local absUp = cameraIsFreeroam and math.abs(self.cameraYMaxDistUp) or math.abs(self.cameraLockedYMaxDistUp)
+		local absDown = cameraIsFreeroam and math.abs(self.cameraYMaxDistDown) or math.abs(self.cameraLockedYMaxDistDown)
+		if distanceY > absUp then
+			cameraY = cameraY + (distanceY-absUp)
+		elseif distanceY < -absDown then
+			cameraY = cameraY + (distanceY+absDown)
+		end
+		
+		if not cameraYExitedBounds then
+			cameraY, cameraYVel = tweenServ:SmoothDamp(cameraY, cameraYLastGroundedPos, cameraYVel, cameraYSpd, nil, dt)
+		else
+			cameraY, cameraYVel = tweenServ:SmoothDamp(cameraY, targetY, cameraYVel, cameraYSpd, nil, dt)
+		end
+	else
+		cameraY = targetY
+		cameraYVel = 0
+	end
+end
+
+function camController:readInput(inputObj, gameProcessed)
+	local isBegin = inputObj.UserInputState == Enum.UserInputState.Begin and true or false
+	if inputObj.UserInputType == Enum.UserInputType.MouseWheel and not gameProcessed then
+		local scroll = self.zoomInverted and -inputObj.Position.Z or inputObj.Position.Z
+		scroll *=  self.zoomSens
+		local min = cameraIsFreeroam and self.zoomMin or self.zoomMinLocked
+		local max = cameraIsFreeroam and self.zoomMax or self.zoomMaxLocked
+		cameraZoom = math.clamp(cameraZoom + scroll,  min, max)
+	elseif (inputObj.UserInputType == Enum.UserInputType.MouseButton1 or inputObj.UserInputType == Enum.UserInputType.MouseButton2) and not gameProcessed then
+		if isBegin then
+			actionPerformTick = os.clock()
+		end
+	elseif inputObj.KeyCode == Enum.KeyCode.LeftShift and isBegin and not gameProcessed then
+		cameraIsFreeroam = not cameraIsFreeroam
+	elseif inputObj.KeyCode == Enum.KeyCode.LeftAlt and not gameProcessed then
+		cameraMouseLocked = not isBegin
+		userInput.MouseBehavior = isBegin and Enum.MouseBehavior.Default or Enum.MouseBehavior.LockCenter
+	elseif inputObj.KeyCode == Enum.KeyCode.KeypadEight and isBegin then
+		self.debugRender = not self.debugRender
+	end
+end
+
+function camController:checkOcclusion()
+	local dir = (cameraTarget.Position - cameraRoot.Position)
+	if dir.Magnitude > 1024 then return end
+	local pos = cameraRoot.Position
+	local ray = world:Spherecast(cameraRoot.Position, cameraColliderRadius, dir, rayParams)
+	if ray then
+		cameraOcclusionForcedZoom = (math.round(ray.Distance*1000)/1000)
+		return true
+	else
+		cameraOcclusionForcedZoom = nil
+		return false
+	end
+end
+
+function camController:applyInvis(dt)
+	local targetTransparency = 1
+
+	for c, i in pairs(playerParts) do
+		if (i.Name ~= "HumanoidRootPart" and i.Name ~= "CameraRoot") then -- ignore parts supposed to remain invis
+			local dist = (camera.CFrame.Position - playerHRP.Position).Magnitude
+			local invisPrecentile = (not playerIsDead and dist < self.plrInvisThreshold) and math.clamp(math.abs(self.plrFullInvisThreshold/dist), self.plrInvisMin, self.plrInvisMax) or self.plrInvisMin
+
+			targetTransparency = i.Transparency ~= invisPrecentile and lerp(i.Transparency, invisPrecentile, self.playerInvisSmoothSpd, dt) or invisPrecentile 
+			i.Transparency = ((targetTransparency >= 0.99) and 1 or (targetTransparency <= 0.01) and 0) or targetTransparency -- spooky ghost sound
+		end
+	end
+
+	local invisFill = self.useInvisHighlight and (self.invisHighlightMax - math.clamp(targetTransparency-self.invisHighlightFillMin, 0, self.invisHighlightMax)) or self.invisHighlightMax
+	local invisOutline = self.useInvisHighlight and (self.invisHighlightMax - math.clamp(targetTransparency-self.invisHighlightOutlineMin, 0, self.invisHighlightMax)) or self.invisHighlightMax
+
+	invisHighlight.FillTransparency = math.clamp(invisFill, self.invisHighlightFillMin, self.invisHighlightMax)
+	invisHighlight.OutlineTransparency = math.clamp(invisOutline, self.invisHighlightOutlineMin, self.invisHighlightMax)
+end
+
+function camController:updateCamRot()
+	if cameraMouseLocked then
+		local delta = self:queryDelta()
+		cameraRotX = math.clamp(cameraRotX + delta.Y, math.rad(-cameraYRotCap), math.rad(cameraYRotCap))
+		cameraRotY = cameraRotY + delta.X
+	end
+end
+
+function camController:debugRenderer()
+	if self.debugRender and cameraRootDebugOutline.Transparency == 1 then
+		cameraRootDebugOutline.Transparency = 0
+	elseif not self.debugRender and cameraRootDebugOutline.Transparency == 0 then
+		cameraRootDebugOutline.Transparency = 1
+	end
+
+	if debugger and self.debugRender then
+
+	end
+end
+
+--helper
+function camController:playerLookAt(dt)
+	if not playerIsDead then
+		if ((os.clock()-actionPerformTick) <= self.cameraFreeRoamThres or not cameraIsFreeroam) and not (isSeated(playerHumanoid)) then
+			local mouseRay = self:queryMouse()
+			playerHumanoid.AutoRotate = false
+			local spd = cameraIsFreeroam and self.playerLookAtSpd or self.playerLookAtSpdLocked
+			local scale = getExponentialScale(spd, dt)
+			local mouseRayPos = (mouseRay and cameraIsFreeroam) and mouseRay.Position or nil
+			local lookVector = (not mouseRayPos) and (getHorizontalDir(camera.CFrame.LookVector) + playerHRP.Position) or (Vector3.new(mouseRayPos.X, playerHRP.Position.Y, mouseRayPos.Z))
+			local plrLookAt = CFrame.lookAt(playerHRP.Position, lookVector)
+			playerHRP.CFrame = playerHRP.CFrame:lerp(plrLookAt, scale)
+		else
+			playerHumanoid.AutoRotate = true
+		end
+	end
+end
+
+function camController:createCamTarget()
+	cameraRotCF = CFrame.fromEulerAnglesYXZ(cameraRotX, cameraRotY, 0)
+	local cameraOffset = cameraRotCF * Vector3.new(0, 0, cameraZoom) 
+	cameraTarget = CFrame.new((cameraRoot.Position + cameraOffset), cameraRoot.Position)
+end
+
+function camController:queryDelta()
+	local deltaRaw = userInput:GetMouseDelta()
+	local inverterX = self.cameraInvertedX and -1 or 1
+	local inverterY = self.cameraInvertedY and -1 or 1
+	local deltaNew = Vector2.new(math.rad((deltaRaw.X * inverterX)*self.cameraSensitivityX), math.rad((deltaRaw.Y * inverterY)*self.cameraSensitivityY))
+	return deltaNew
+end
+
+function camController:queryMouse()
+	local pos = userInput:GetMouseLocation()
+	local mouseViewportRay = camera:ViewportPointToRay(pos.X, pos.Y)
+	local raycast = world:Raycast(mouseViewportRay.Origin, mouseViewportRay.Direction*mouseRayDistance, rayParams)
+	return raycast
+end
+
+function camController:instanceNew(obj)
+	if obj:IsA("BasePart") then
+		table.insert(rayExclude, obj)
+	end
+	rayParams.FilterDescendantsInstances = rayExclude
+end
+
+function camController:instanceRemove(obj)
+	if obj:IsA("BasePart") then
+		local tablePos = table.find(rayExclude, obj)
+		table.remove(rayExclude, tablePos)
+	end
+end
+
+return camController

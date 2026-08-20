@@ -409,33 +409,19 @@ function camController:updateCamRoot(dt)
 		local targetHorizontal = freeroamCheck and cameraHorizontalPos or cameraHorizontalPos + (cameraRotCF.RightVector * self.cameraHorizontalOffsetShiftLock)
 		local desiredPos = Vector3.new(targetHorizontal.X, cameraY, targetHorizontal.Z)
 
-		local horizontalOrigin = playerHRP.Position
-		local dirHorizontal = (Vector3.new(desiredPos.X, playerHRP.Position.Y, desiredPos.Z) - horizontalOrigin)
-		local rootOccludeHorizontal = world:Spherecast(horizontalOrigin, cameraRootColliderRadius, dirHorizontal, rayParams)
-		local rootOccludeHorizontalPos = rootOccludeHorizontal and (horizontalOrigin + (dirHorizontal.Unit * rootOccludeHorizontal.Distance)) or nil
-		local finalHorizontalPos = targetHorizontal
+		local dir = (desiredPos-playerHRP.Position)
+		local rootOccludeCheck = world:Spherecast(playerHRP.Position, cameraRootColliderRadius, dir, rayParams)
+		local rootOccludePos = rootOccludeCheck and (playerHRP.Position+(dir.Unit*rootOccludeCheck.Distance)) or nil
 
-		local verticalOrigin = Vector3.new(finalHorizontalPos.X, playerHRP.Position.Y, finalHorizontalPos.Z)
-		local dirVertical = (Vector3.new(playerHRP.Position.X, cameraY, playerHRP.Position.Z) - verticalOrigin)
-		local rootOccludeVertical = world:Spherecast(verticalOrigin, cameraRootColliderRadius, dirVertical, rayParams)
-		local rootOccludeVerticalPos = rootOccludeVertical and (verticalOrigin + (dirVertical.Unit * rootOccludeVertical.Distance)) or nil
-		local finalVerticalPos = rootOccludeVerticalPos and rootOccludeVerticalPos.Y or cameraY
-
-		if rootOccludeHorizontalPos then
-			local goal = getHorizontalDir(rootOccludeHorizontalPos)
-			local current = getHorizontalDir(cameraRoot.Position)
-			finalHorizontalPos = current:Lerp(goal, getExponentialScale(self.rootOccludedSpd, dt))
+		local occludedY
+		if rootOccludePos then
+			local origin = Vector3.new(rootOccludePos.X, playerHRP.Position.Y, rootOccludePos.Z)
+			local dir2 = (rootOccludeCheck.Position-origin)
+			local rootOccludeYCheck = world:Spherecast(origin, cameraRootColliderRadius, dir2, rayParams)
+			occludedY = rootOccludeYCheck and (origin+(dir2.Unit*rootOccludeYCheck.Distance)).Y or rootTargetY
 		end
 
-		if rootOccludeVerticalPos then
-			local goal = rootOccludeVerticalPos.Y
-			local current = cameraRoot.Position.Y
-			finalVerticalPos = lerp(current, goal, self.rootOccludedSpd, dt)
-		end
-
-		local finalPos = Vector3.new(finalHorizontalPos.X, finalVerticalPos, finalHorizontalPos.Z)
-
-		cameraRoot.Position = finalPos
+		cameraRoot.Position = rootOccludeCheck and (Vector3.new(rootOccludePos.X, occludedY, rootOccludePos.Z)) or desiredPos
 	end
 end
 

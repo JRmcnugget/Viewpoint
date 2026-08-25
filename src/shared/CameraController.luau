@@ -160,6 +160,7 @@ local cameraRootColliderRadius = 0.5
 -- really does not make any sense, maybe floating point issue? regardless, the solution is to pull it back inward and out of the surface
 -- shouldn't really be touched.
 local cameraRootCollideDistScale = 0.99 
+local cameraRootOccluded = nil
 
 local zoomSmooth = cameraZoom
 
@@ -413,7 +414,7 @@ function camController:updateCamRoot(dt)
 		local targetHorizontal = freeroamCheck and cameraHorizontalPos or cameraHorizontalPos + (cameraRotCF.RightVector * self.cameraHorizontalOffsetShiftLock)
 		local desiredPos = Vector3.new(targetHorizontal.X, cameraY, targetHorizontal.Z)
 
-		local Ypos = cameraYExitedBounds and playerHRP.Position.Y or (cameraYLastGroundedPos-offset)
+		local Ypos = cameraYExitedBounds and cameraY or (cameraYLastGroundedPos-offset)
 
 		local origin = getHorizontalDir(playerHRP.Position) + Vector3.new(0,Ypos,0)
 		local dir = (desiredPos-origin)
@@ -426,14 +427,19 @@ function camController:updateCamRoot(dt)
 			local final = getHorizontalDir(rootOccludePos) + Vector3.new(0,desiredPos.Y,0)
 			local dir2 = (final-origin2)
 			local rootOccludeYCheck = world:Spherecast(origin2, cameraRootColliderRadius, dir2, rayParams)
-			occludedY = rootOccludeYCheck and (origin2+(dir2.Unit*rootOccludeYCheck.Distance)).Y or (cameraYExitedBounds and rootTargetY or cameraY) 
+			occludedY = rootOccludeYCheck and (origin2+(dir2.Unit*rootOccludeYCheck.Distance)).Y or cameraY
 		end
 
 		local finalPos = desiredPos
 		if rootOccludeCheck then
 			local target = Vector3.new(rootOccludePos.X, occludedY, rootOccludePos.Z)
 			finalPos = cameraRoot.Position:lerp(target, getExponentialScale(self.rootOccludedSpd, dt))
+			cameraRootOccluded = finalPos
+		elseif cameraRootOccluded then
+			cameraRootOccluded = nil
 		end
+
+		print(cameraRootOccluded)
 		
 		cameraRoot.Position = finalPos
 	end
@@ -465,8 +471,7 @@ function camController:updateRootHorizontal(dt, radial, baseSpd, spdInc, maxDist
 
 			local spd = math.clamp(baseSpd - math.abs(dist * spdInc), self.cameraHorizontalMinSpd, baseSpd)
 
-			cameraHorizontalPos, cameraHorizontalVel =
-				tweenServ:SmoothDamp(cameraHorizontalPos, target, cameraHorizontalVel, spd, nil, dt)
+			cameraHorizontalPos, cameraHorizontalVel = tweenServ:SmoothDamp(cameraHorizontalPos, target, cameraHorizontalVel, spd, nil, dt)
 		end
 	else
 		cameraHorizontalPos = hrpPos

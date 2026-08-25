@@ -109,7 +109,7 @@ camController.invisHighlightOutlineMin = 0.4
 camController.invisHighlightMax = 1
 
 -- -- cameraRoot
-camController.rootOccludedSpd = 35
+camController.rootOccludedSpd = 40
 
 -- -- SETTINGS END
 

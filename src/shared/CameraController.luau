@@ -411,13 +411,13 @@ function camController:updateCamRoot(dt)
 
 		local dir = (desiredPos-playerHRP.Position)
 		local rootOccludeCheck = world:Spherecast(playerHRP.Position, cameraRootColliderRadius, dir, rayParams)
-		local rootOccludePos = rootOccludeCheck and (playerHRP.Position+(dir.Unit*rootOccludeCheck.Distance)) or nil
+		local rootOccludePos = rootOccludeCheck and (playerHRP.Position+(dir.Unit*(rootOccludeCheck.Distance*0.99))) or nil
 
 		local occludedY
 		if rootOccludePos then
-			local origin = Vector3.new(rootOccludeCheck.Position.X, playerHRP.Position.Y, rootOccludeCheck.Position.Z)
-			local dir2 = (rootOccludeCheck.Position-origin)
-			print(dir2.Magnitude)
+			local origin = getHorizontalDir(rootOccludePos) + Vector3.new(0,playerHRP.Position.Y,0)
+			local final = getHorizontalDir(rootOccludePos) + Vector3.new(0,desiredPos.Y,0)
+			local dir2 = (final-origin)
 			local rootOccludeYCheck = world:Spherecast(origin, cameraRootColliderRadius, dir2, rayParams)
 			occludedY = rootOccludeYCheck and (origin+(dir2.Unit*rootOccludeYCheck.Distance)).Y or rootTargetY
 		end

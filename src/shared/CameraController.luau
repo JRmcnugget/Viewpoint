@@ -426,7 +426,13 @@ function camController:updateCamRoot(dt)
 			occludedY = rootOccludeYCheck and (origin+(dir2.Unit*rootOccludeYCheck.Distance)).Y or rootTargetY
 		end
 
-		cameraRoot.Position = rootOccludeCheck and (Vector3.new(rootOccludePos.X, occludedY, rootOccludePos.Z)) or desiredPos
+		local finalPos = desiredPos
+		if rootOccludeCheck then
+			local target = Vector3.new(rootOccludePos.X, occludedY, rootOccludePos.Z)
+			finalPos = cameraRoot.Position:lerp(target, getExponentialScale(self.rootOccludedSpd, dt))
+		end
+		
+		cameraRoot.Position = finalPos
 	end
 end
 

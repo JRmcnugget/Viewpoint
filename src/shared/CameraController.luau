@@ -413,17 +413,20 @@ function camController:updateCamRoot(dt)
 		local targetHorizontal = freeroamCheck and cameraHorizontalPos or cameraHorizontalPos + (cameraRotCF.RightVector * self.cameraHorizontalOffsetShiftLock)
 		local desiredPos = Vector3.new(targetHorizontal.X, cameraY, targetHorizontal.Z)
 
-		local dir = (desiredPos-playerHRP.Position)
-		local rootOccludeCheck = world:Spherecast(playerHRP.Position, cameraRootColliderRadius, dir, rayParams)
+		local Ypos = cameraYExitedBounds and playerHRP.Position.Y or (cameraYLastGroundedPos-offset)
+
+		local origin = getHorizontalDir(playerHRP.Position) + Vector3.new(0,Ypos,0)
+		local dir = (desiredPos-origin)
+		local rootOccludeCheck = world:Spherecast(origin, cameraRootColliderRadius, dir, rayParams)
 		local rootOccludePos = rootOccludeCheck and (playerHRP.Position+(dir.Unit*(rootOccludeCheck.Distance*cameraRootCollideDistScale))) or nil
 
 		local occludedY
 		if rootOccludePos then
-			local origin = getHorizontalDir(rootOccludePos) + Vector3.new(0,playerHRP.Position.Y,0)
+			local origin2 = getHorizontalDir(rootOccludePos) + Vector3.new(0,Ypos,0)
 			local final = getHorizontalDir(rootOccludePos) + Vector3.new(0,desiredPos.Y,0)
-			local dir2 = (final-origin)
-			local rootOccludeYCheck = world:Spherecast(origin, cameraRootColliderRadius, dir2, rayParams)
-			occludedY = rootOccludeYCheck and (origin+(dir2.Unit*rootOccludeYCheck.Distance)).Y or (cameraYExitedBounds and rootTargetY or cameraY) 
+			local dir2 = (final-origin2)
+			local rootOccludeYCheck = world:Spherecast(origin2, cameraRootColliderRadius, dir2, rayParams)
+			occludedY = rootOccludeYCheck and (origin2+(dir2.Unit*rootOccludeYCheck.Distance)).Y or (cameraYExitedBounds and rootTargetY or cameraY) 
 		end
 
 		local finalPos = desiredPos
@@ -674,6 +677,44 @@ function camController:instanceRemove(obj)
 		table.remove(rayExclude, tablePos)
 	end
 	rayParams.FilterDescendantsInstances = rayExclude
+end
+
+local Debris = game:GetService("Debris")
+
+-- Draws a part representing a vector from `origin` in the direction/magnitude of `vector`
+-- origin: Vector3 (start point)
+-- vector: Vector3 (direction + magnitude, e.g. part.Velocity or (target - origin))
+-- duration: number (seconds before it's destroyed)
+-- color: optional Color3 (defaults to bright yellow)
+function camController:debugDrawVector(origin, vector, duration, color)
+	duration = duration or 3
+	color = color or Color3.fromRGB(255, 255, 0)
+
+	local magnitude = vector.Magnitude
+	if magnitude < 1e-4 then
+		return -- nothing meaningful to draw
+	end
+
+	local part = Instance.new("Part")
+	part.Name = "DebugVector"
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	part.Size = Vector3.new(0.1, 0.1, magnitude)
+
+	-- Position at the midpoint, oriented so the part's Z axis points along the vector
+	local midpoint = origin + vector / 2
+	part.CFrame = CFrame.new(midpoint, midpoint + vector.Unit)
+
+	part.Parent = workspace
+
+	-- Auto-cleanup
+	Debris:AddItem(part, duration)
+
+	return part
 end
 
 return camController

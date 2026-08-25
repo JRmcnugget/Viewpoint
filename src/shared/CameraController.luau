@@ -423,7 +423,7 @@ function camController:updateCamRoot(dt)
 			local final = getHorizontalDir(rootOccludePos) + Vector3.new(0,desiredPos.Y,0)
 			local dir2 = (final-origin)
 			local rootOccludeYCheck = world:Spherecast(origin, cameraRootColliderRadius, dir2, rayParams)
-			occludedY = rootOccludeYCheck and (origin+(dir2.Unit*rootOccludeYCheck.Distance)).Y or rootTargetY
+			occludedY = rootOccludeYCheck and (origin+(dir2.Unit*rootOccludeYCheck.Distance)).Y or (cameraYExitedBounds and rootTargetY or cameraY) 
 		end
 
 		local finalPos = desiredPos

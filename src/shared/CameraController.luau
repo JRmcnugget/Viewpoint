@@ -156,6 +156,10 @@ local cameraHorizontalVel = Vector3.new(0, 0, 0)
 
 local cameraColliderRadius = 0.15
 local cameraRootColliderRadius = 0.5
+-- for whatever reason, even though the sphere should be perfectly flush against the surface from a spherecast, it somehow catches lower ceilings of parts that form a uniform surface and etc. for whatever reason it is somehow slightly IN the surface
+-- really does not make any sense, maybe floating point issue? regardless, the solution is to pull it back inward and out of the surface
+-- shouldn't really be touched.
+local cameraRootCollideDistScale = 0.99 
 
 local zoomSmooth = cameraZoom
 
@@ -411,7 +415,7 @@ function camController:updateCamRoot(dt)
 
 		local dir = (desiredPos-playerHRP.Position)
 		local rootOccludeCheck = world:Spherecast(playerHRP.Position, cameraRootColliderRadius, dir, rayParams)
-		local rootOccludePos = rootOccludeCheck and (playerHRP.Position+(dir.Unit*(rootOccludeCheck.Distance*0.99))) or nil
+		local rootOccludePos = rootOccludeCheck and (playerHRP.Position+(dir.Unit*(rootOccludeCheck.Distance*cameraRootCollideDistScale))) or nil
 
 		local occludedY
 		if rootOccludePos then

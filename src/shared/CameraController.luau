@@ -47,11 +47,11 @@ camController.cameraFreeRoamThres = 2
 camController.cameraInvertedHorizontal = true
 camController.cameraSmoothingHorizontalEnabled = true
 
-camController.cameraHorizontalOffsetShiftLock = 2.5
+camController.cameraHorizontalOffsetShiftLock = 3.5
 
 camController.cameraHorizontalMinSpd = 0.12
 camController.cameraHorizontalMaxDistFreeroam = 6
-camController.cameraHorizontalMaxDistLocked = 2.5
+camController.cameraHorizontalMaxDistLocked = 2
 
 camController.cameraHorizontalFreeroamRadial = 1
 camController.cameraHorizontalFreeroamSpd = 0.5

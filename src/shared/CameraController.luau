@@ -693,42 +693,4 @@ function camController:instanceRemove(obj)
 	rayParams.FilterDescendantsInstances = rayExclude
 end
 
-local Debris = game:GetService("Debris")
-
--- Draws a part representing a vector from `origin` in the direction/magnitude of `vector`
--- origin: Vector3 (start point)
--- vector: Vector3 (direction + magnitude, e.g. part.Velocity or (target - origin))
--- duration: number (seconds before it's destroyed)
--- color: optional Color3 (defaults to bright yellow)
-function camController:debugDrawVector(origin, vector, duration, color)
-	duration = duration or 3
-	color = color or Color3.fromRGB(255, 255, 0)
-
-	local magnitude = vector.Magnitude
-	if magnitude < 1e-4 then
-		return -- nothing meaningful to draw
-	end
-
-	local part = Instance.new("Part")
-	part.Name = "DebugVector"
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Material = Enum.Material.Neon
-	part.Color = color
-	part.Size = Vector3.new(0.1, 0.1, magnitude)
-
-	-- Position at the midpoint, oriented so the part's Z axis points along the vector
-	local midpoint = origin + vector / 2
-	part.CFrame = CFrame.new(midpoint, midpoint + vector.Unit)
-
-	part.Parent = workspace
-
-	-- Auto-cleanup
-	Debris:AddItem(part, duration)
-
-	return part
-end
-
 return camController

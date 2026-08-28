@@ -427,10 +427,8 @@ function camController:updateCamRoot(dt)
 end
 
 function camController:updateRootHorizontal(dt, radial, baseSpd, spdInc, maxDist)
-	local lastPos = cameraHorizontalPos
 	local hrpPos = getHorizontalDir(playerHRP.Position)
 	if self.cameraSmoothingHorizontalEnabled then
-		local rootPos = getHorizontalDir(cameraRoot.Position)
 		local dir = (hrpPos - cameraHorizontalPos)
 		if dir then
 			local target
@@ -527,12 +525,13 @@ function camController:updateRootOcclusion(dt, desiredPos, offsetY)
 	end
 
 	local finalPos = desiredPos
+	local scale = getExponentialScale(self.rootOccludedSpd, dt)
 	if rootOccludeCheck then
 		local target = Vector3.new(rootOccludePos.X, occludedY, rootOccludePos.Z)
-		finalPos = cameraRoot.Position:lerp(target, getExponentialScale(self.rootOccludedSpd, dt))
+		finalPos = cameraRoot.Position:lerp(target, scale)
 		cameraRootOccluded = finalPos
 	elseif cameraRootOccluded then
-		finalPos = cameraRoot.Position:lerp(desiredPos, getExponentialScale(self.rootOccludedSpd, dt))
+		finalPos = cameraRoot.Position:lerp(desiredPos, scale)
 		if (finalPos - desiredPos).Magnitude < 0.2 then
 			cameraRootOccluded = nil
 		end
@@ -548,12 +547,7 @@ function camController:readInput(inputObj, gameProcessed)
 		local min = cameraIsFreeroam and self.zoomMin or self.zoomMinLocked
 		local max = cameraIsFreeroam and self.zoomMax or self.zoomMaxLocked
 		cameraZoom = math.clamp(cameraZoom + scroll, min, max)
-	elseif
-		(
-			inputObj.UserInputType == Enum.UserInputType.MouseButton1
-			or inputObj.UserInputType == Enum.UserInputType.MouseButton2
-		) and not gameProcessed
-	then
+	elseif (inputObj.UserInputType == Enum.UserInputType.MouseButton1 or inputObj.UserInputType == Enum.UserInputType.MouseButton2 ) and not gameProcessed then
 		if isBegin then
 			actionPerformTick = os.clock()
 		end
@@ -572,7 +566,6 @@ function camController:checkOcclusion()
 	if dir.Magnitude > 1024 then
 		return
 	end
-	local pos = cameraRoot.Position
 	local ray = world:Spherecast(cameraRoot.Position, cameraColliderRadius, dir, rayParams)
 	if ray then
 		cameraOcclusionForcedZoom = (math.round(ray.Distance * 1000) / 1000)

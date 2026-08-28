@@ -47,11 +47,11 @@ camController.cameraFreeRoamThres = 2
 camController.cameraInvertedHorizontal = true
 camController.cameraSmoothingHorizontalEnabled = true
 
-camController.cameraHorizontalOffsetShiftLock = 3.5
+camController.cameraHorizontalOffsetShiftLock = 3.8
 
 camController.cameraHorizontalMinSpd = 0.12
 camController.cameraHorizontalMaxDistFreeroam = 6
-camController.cameraHorizontalMaxDistLocked = 2
+camController.cameraHorizontalMaxDistLocked = 3
 
 camController.cameraHorizontalFreeroamRadial = 1
 camController.cameraHorizontalFreeroamSpd = 0.5
@@ -398,6 +398,7 @@ function camController:updateCamRoot(dt)
 	if not playerIsDead then
 		local freeroamCheck = (cameraIsFreeroam or isSeated(playerHumanoid))
 
+		-- desiredPosition calculation
 		local radial = freeroamCheck and self.cameraHorizontalFreeroamRadial or self.cameraHorizontalLockedRadial
 		local baseSpd = freeroamCheck and self.cameraHorizontalFreeroamSpd or self.cameraHorizontalLockedSpd
 		local spdIncrement = freeroamCheck and self.cameraHorizontalFreeroamSpdDistInc
@@ -414,6 +415,7 @@ function camController:updateCamRoot(dt)
 		local targetHorizontal = freeroamCheck and cameraHorizontalPos or cameraHorizontalPos + (cameraRotCF.RightVector * self.cameraHorizontalOffsetShiftLock)
 		local desiredPos = Vector3.new(targetHorizontal.X, cameraY, targetHorizontal.Z)
 
+		-- occlusion checking
 		local Ypos = cameraYExitedBounds and cameraY or (cameraYLastGroundedPos-offset)
 
 		local origin = getHorizontalDir(playerHRP.Position) + Vector3.new(0,Ypos,0)
@@ -436,10 +438,11 @@ function camController:updateCamRoot(dt)
 			finalPos = cameraRoot.Position:lerp(target, getExponentialScale(self.rootOccludedSpd, dt))
 			cameraRootOccluded = finalPos
 		elseif cameraRootOccluded then
-			cameraRootOccluded = nil
+			finalPos = cameraRoot.Position:lerp(desiredPos, getExponentialScale(self.rootOccludedSpd, dt))
+			if (finalPos-desiredPos).Magnitude < 0.2 then
+				cameraRootOccluded = nil
+			end
 		end
-
-		print(cameraRootOccluded)
 		
 		cameraRoot.Position = finalPos
 	end
@@ -458,6 +461,7 @@ function camController:updateRootHorizontal(dt, radial, baseSpd, spdInc, maxDist
 			if dir.Magnitude > maxDist then
 				dist = (dir.Magnitude - maxDist)
 				cameraHorizontalPos = cameraHorizontalPos + (dir.Unit * dist)
+				print("did")
 			end
 
 			if dir.Magnitude > radial then

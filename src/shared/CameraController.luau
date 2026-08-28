@@ -159,7 +159,7 @@ local cameraRootColliderRadius = 0.5
 -- for whatever reason, even though the sphere should be perfectly flush against the surface from a spherecast, it somehow catches lower ceilings of parts that form a uniform surface and etc. for whatever reason it is somehow slightly IN the surface
 -- really does not make any sense, maybe floating point issue? regardless, the solution is to pull it back inward and out of the surface
 -- shouldn't really be touched.
-local cameraRootCollideDistScale = 0.99 
+local cameraRootCollideDistScale = 0.99
 local cameraRootOccluded = nil
 
 local zoomSmooth = cameraZoom
@@ -182,7 +182,10 @@ end
 
 -- local helpers
 local function isGrounded(humanoid)
-	return not (humanoid:GetState() == Enum.HumanoidStateType.Jumping or humanoid:GetState() == Enum.HumanoidStateType.Freefall)
+	return not (
+		humanoid:GetState() == Enum.HumanoidStateType.Jumping
+		or humanoid:GetState() == Enum.HumanoidStateType.Freefall
+	)
 end
 
 local function isSeated(humanoid)
@@ -412,38 +415,13 @@ function camController:updateCamRoot(dt)
 
 		self:updateRootY(dt, rootTargetY)
 
-		local targetHorizontal = freeroamCheck and cameraHorizontalPos or cameraHorizontalPos + (cameraRotCF.RightVector * self.cameraHorizontalOffsetShiftLock)
+		local targetHorizontal = freeroamCheck and cameraHorizontalPos
+			or cameraHorizontalPos + (cameraRotCF.RightVector * self.cameraHorizontalOffsetShiftLock)
 		local desiredPos = Vector3.new(targetHorizontal.X, cameraY, targetHorizontal.Z)
 
 		-- occlusion checking
-		local Ypos = cameraYExitedBounds and cameraY or (cameraYLastGroundedPos-offset)
+		local finalPos = self:updateRootOcclusion(dt, desiredPos, offset)
 
-		local origin = getHorizontalDir(playerHRP.Position) + Vector3.new(0,Ypos,0)
-		local dir = (desiredPos-origin)
-		local rootOccludeCheck = world:Spherecast(origin, cameraRootColliderRadius, dir, rayParams)
-		local rootOccludePos = rootOccludeCheck and (playerHRP.Position+(dir.Unit*(rootOccludeCheck.Distance*cameraRootCollideDistScale))) or nil
-
-		local occludedY
-		if rootOccludePos then
-			local origin2 = getHorizontalDir(rootOccludePos) + Vector3.new(0,Ypos,0)
-			local final = getHorizontalDir(rootOccludePos) + Vector3.new(0,desiredPos.Y,0)
-			local dir2 = (final-origin2)
-			local rootOccludeYCheck = world:Spherecast(origin2, cameraRootColliderRadius, dir2, rayParams)
-			occludedY = rootOccludeYCheck and (origin2+(dir2.Unit*rootOccludeYCheck.Distance)).Y or cameraY
-		end
-
-		local finalPos = desiredPos
-		if rootOccludeCheck then
-			local target = Vector3.new(rootOccludePos.X, occludedY, rootOccludePos.Z)
-			finalPos = cameraRoot.Position:lerp(target, getExponentialScale(self.rootOccludedSpd, dt))
-			cameraRootOccluded = finalPos
-		elseif cameraRootOccluded then
-			finalPos = cameraRoot.Position:lerp(desiredPos, getExponentialScale(self.rootOccludedSpd, dt))
-			if (finalPos-desiredPos).Magnitude < 0.2 then
-				cameraRootOccluded = nil
-			end
-		end
-		
 		cameraRoot.Position = finalPos
 	end
 end
@@ -475,7 +453,8 @@ function camController:updateRootHorizontal(dt, radial, baseSpd, spdInc, maxDist
 
 			local spd = math.clamp(baseSpd - math.abs(dist * spdInc), self.cameraHorizontalMinSpd, baseSpd)
 
-			cameraHorizontalPos, cameraHorizontalVel = tweenServ:SmoothDamp(cameraHorizontalPos, target, cameraHorizontalVel, spd, nil, dt)
+			cameraHorizontalPos, cameraHorizontalVel =
+				tweenServ:SmoothDamp(cameraHorizontalPos, target, cameraHorizontalVel, spd, nil, dt)
 		end
 	else
 		cameraHorizontalPos = hrpPos
@@ -526,6 +505,39 @@ function camController:updateRootY(dt, targetY)
 		cameraY = targetY
 		cameraYVel = 0
 	end
+end
+
+function camController:updateRootOcclusion(dt, desiredPos, offsetY)
+	local Ypos = cameraYExitedBounds and cameraY or (cameraYLastGroundedPos - offsetY)
+
+	local origin = getHorizontalDir(playerHRP.Position) + Vector3.new(0, Ypos, 0)
+	local dir = (desiredPos - origin)
+	local rootOccludeCheck = world:Spherecast(origin, cameraRootColliderRadius, dir, rayParams)
+	local rootOccludePos = rootOccludeCheck
+			and (playerHRP.Position + (dir.Unit * (rootOccludeCheck.Distance * cameraRootCollideDistScale)))
+		or nil
+
+	local occludedY
+	if rootOccludePos then
+		local origin2 = getHorizontalDir(rootOccludePos) + Vector3.new(0, Ypos, 0)
+		local final = getHorizontalDir(rootOccludePos) + Vector3.new(0, desiredPos.Y, 0)
+		local dir2 = (final - origin2)
+		local rootOccludeYCheck = world:Spherecast(origin2, cameraRootColliderRadius, dir2, rayParams)
+		occludedY = rootOccludeYCheck and (origin2 + (dir2.Unit * rootOccludeYCheck.Distance)).Y or cameraY
+	end
+
+	local finalPos = desiredPos
+	if rootOccludeCheck then
+		local target = Vector3.new(rootOccludePos.X, occludedY, rootOccludePos.Z)
+		finalPos = cameraRoot.Position:lerp(target, getExponentialScale(self.rootOccludedSpd, dt))
+		cameraRootOccluded = finalPos
+	elseif cameraRootOccluded then
+		finalPos = cameraRoot.Position:lerp(desiredPos, getExponentialScale(self.rootOccludedSpd, dt))
+		if (finalPos - desiredPos).Magnitude < 0.2 then
+			cameraRootOccluded = nil
+		end
+	end
+	return finalPos
 end
 
 function camController:readInput(inputObj, gameProcessed)

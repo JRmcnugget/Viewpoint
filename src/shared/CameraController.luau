@@ -111,6 +111,7 @@ camController.invisHighlightMax = 1
 -- -- cameraRoot
 camController.rootOccludedSpd = 40
 camController.rootOccludeRetrunSpd = 15
+camController.rootOccludeForgetThres = 0.2
 
 -- -- SETTINGS END
 
@@ -531,7 +532,7 @@ function camController:updateRootOcclusion(dt, desiredPos, offsetY)
 		cameraRootOccluded = finalPos
 	elseif cameraRootOccluded then
 		finalPos = cameraRoot.Position:lerp(desiredPos, scale)
-		if (finalPos - desiredPos).Magnitude < 0.2 then
+		if (finalPos - desiredPos).Magnitude < self.rootOccludeForgetThres then
 			cameraRootOccluded = nil
 		end
 	end

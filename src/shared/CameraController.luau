@@ -110,6 +110,7 @@ camController.invisHighlightMax = 1
 
 -- -- cameraRoot
 camController.rootOccludedSpd = 40
+camController.rootOccludeRetrunSpd = 15
 
 -- -- SETTINGS END
 
@@ -523,7 +524,7 @@ function camController:updateRootOcclusion(dt, desiredPos, offsetY)
 	end
 
 	local finalPos = desiredPos
-	local scale = getExponentialScale(self.rootOccludedSpd, dt)
+	local scale = getExponentialScale(self.rootOccludeRetrunSpd, dt)
 	if rootOccludeCheck then
 		local target = Vector3.new(rootOccludePos.X, occludedY, rootOccludePos.Z)
 		finalPos = cameraRoot.Position:lerp(target, scale)

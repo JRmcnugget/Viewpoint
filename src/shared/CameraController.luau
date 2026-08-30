@@ -525,12 +525,13 @@ function camController:updateRootOcclusion(dt, desiredPos, offsetY)
 	end
 
 	local finalPos = desiredPos
-	local scale = getExponentialScale(self.rootOccludeRetrunSpd, dt)
 	if rootOccludeCheck then
+		local scale = getExponentialScale(self.rootOccludeSpd, dt)
 		local target = Vector3.new(rootOccludePos.X, occludedY, rootOccludePos.Z)
 		finalPos = cameraRoot.Position:lerp(target, scale)
 		cameraRootOccluded = finalPos
 	elseif cameraRootOccluded then
+		local scale = getExponentialScale(self.rootOccludeRetrunSpd, dt)
 		finalPos = cameraRoot.Position:lerp(desiredPos, scale)
 		if (finalPos - desiredPos).Magnitude < self.rootOccludeForgetThres then
 			cameraRootOccluded = nil

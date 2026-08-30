@@ -214,22 +214,6 @@ function camController:Init(plr)
 
 	self:instanceNewPlayer(plr)
 
-	player.CharacterRemoving:Connect(function(char)
-		self.IsInitialized = false
-
-		playerCharacter = nil
-		playerHumanoid = nil
-		playerHRP = nil
-		camera = nil
-
-		if cameraRoot then
-			cameraRoot:Destroy()
-			cameraRoot = nil
-		end
-
-		print(playerInstancingConnections)
-	end)
-
 	userInput.InputBegan:Connect(function(input, processed)
 		self:readInput(input, processed)
 	end)
@@ -305,16 +289,18 @@ end
 
 --methods
 function camController:instanceNewPlayer(plr)
-	if plr == player then
-		player.CharacterAdded:Connect(function(char)
-			local loaded = plr:HasAppearanceLoaded()
+	local localPlrCheck = plr == player
+	local instanceWatcher = nil
+	plr.CharacterAdded:Connect(function(char)
+		local loaded = plr:HasAppearanceLoaded()
 
-			while not loaded do
-				--if char.Parent ~= world then return end
-				loaded = plr:HasAppearanceLoaded()
-				task.wait()
-			end
+		while not loaded do
+			--if char.Parent ~= world then return end
+			loaded = plr:HasAppearanceLoaded()
+			task.wait()
+		end
 
+		if localPlrCheck then
 			playerIsDead = false
 
 			playerCharacter = char
@@ -355,34 +341,58 @@ function camController:instanceNewPlayer(plr)
 			playerHumanoid.Died:Connect(function()
 				playerIsDead = true
 			end)
-
-			table.clear(playerParts) -- remove stale references
-
-			--instance all playerparts that are added upon the character's immediate creation
-			for c, i in pairs(char:GetDescendants()) do
-				if i.ClassName == "MeshPart" or i.ClassName == "Part" then
-					table.insert(playerParts, i)
-					i:AddTag(ignoreTag)
-				end
-			end
-
-			--instance any parts that are added further to the character
-			local instanceWatcher = playerCharacter.DescendantAdded:Connect(function(obj)
-				if obj:IsA("BasePart") then
-					table.insert(playerParts, obj)
-					obj:AddTag(ignoreTag)
-				end
-			end)
-			table.insert(playerInstancingConnections, instanceWatcher) -- does not automatically disconnect so we have to keep track
-
 			camera.CameraSubject = cameraRoot
 			camera.CameraType = Enum.CameraType.Scriptable
 			rayParams.FilterDescendantsInstances = rayExclude
 			userInput.MouseBehavior = Enum.MouseBehavior.LockCenter
+		end
 
-			self.IsInitialized = true
+		table.clear(playerParts) -- remove stale references
+
+		--instance all playerparts that are added upon the character's immediate creation
+		for c, i in pairs(char:GetDescendants()) do
+			if i.ClassName == "MeshPart" or i.ClassName == "Part" then
+				if localPlrCheck then
+					table.insert(playerParts, i)
+				end
+				i:AddTag(ignoreTag)
+			end
+		end
+
+		--instance any parts that are added further to the character
+		instanceWatcher = playerCharacter.DescendantAdded:Connect(function(obj)
+			if obj:IsA("BasePart") then
+				if localPlrCheck then
+					table.insert(playerParts, obj)
+				end
+				obj:AddTag(ignoreTag)
+			end
 		end)
-	end
+		table.insert(playerInstancingConnections, instanceWatcher) -- does not automatically disconnect so we have to keep track
+
+		if localPlrCheck then
+			self.IsInitialized = true
+		end
+	end)
+
+	player.CharacterRemoving:Connect(function(char)
+		if localPlrCheck then
+			self.IsInitialized = false
+
+			playerCharacter = nil
+			playerHumanoid = nil
+			playerHRP = nil
+			camera = nil
+
+			if cameraRoot then
+				cameraRoot:Destroy()
+				cameraRoot = nil
+			end
+		end
+
+		local pos = table.find(playerInstancingConnections, instanceWatcher)
+		if pos then table.remove(playerInstancingConnections, pos) end
+	end)
 end
 
 function camController:createCameraFinal(dt)
@@ -439,7 +449,6 @@ function camController:updateRootHorizontal(dt, radial, baseSpd, spdInc, maxDist
 			if dir.Magnitude > maxDist then
 				dist = (dir.Magnitude - maxDist)
 				cameraHorizontalPos = cameraHorizontalPos + (dir.Unit * dist)
-				print("did")
 			end
 
 			if dir.Magnitude > radial then
@@ -548,7 +557,12 @@ function camController:readInput(inputObj, gameProcessed)
 		local min = cameraIsFreeroam and self.zoomMin or self.zoomMinLocked
 		local max = cameraIsFreeroam and self.zoomMax or self.zoomMaxLocked
 		cameraZoom = math.clamp(cameraZoom + scroll, min, max)
-	elseif (inputObj.UserInputType == Enum.UserInputType.MouseButton1 or inputObj.UserInputType == Enum.UserInputType.MouseButton2 ) and not gameProcessed then
+	elseif
+		(
+			inputObj.UserInputType == Enum.UserInputType.MouseButton1
+			or inputObj.UserInputType == Enum.UserInputType.MouseButton2
+		) and not gameProcessed
+	then
 		if isBegin then
 			actionPerformTick = os.clock()
 		end

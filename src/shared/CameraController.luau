@@ -24,6 +24,7 @@ local shouldIgnoreOtherPlrs = true
 camController.cameraSensitivityX = 0.5
 camController.cameraSensitivityY = 0.5
 camController.zoomSens = 2.25
+camController.zoomSenseMobile = 0.85
 
 -- zoom
 camController.zoomInverted = true
@@ -136,6 +137,8 @@ local playerIsDead = false
 local playerHumanoid = nil
 local playerParts = {}
 
+local playerIsPinching = nil
+
 local playerInstancingConnections = {}
 
 --camera
@@ -164,6 +167,8 @@ local cameraRootColliderRadius = 0.5
 -- shouldn't really be touched.
 local cameraRootCollideDistScale = 0.99
 local cameraRootOccluded = nil
+
+
 
 local zoomSmooth = cameraZoom
 
@@ -234,6 +239,16 @@ function camController:Init(plr)
 	userInput.InputEnded:Connect(function(input, processed)
 		self:readInput(input, processed)
 	end)
+	userInput.TouchPinch:Connect(function(pos, scale, vel, inputstate, processed)
+		local falseInput = {
+			touchPositions = pos,
+			scale = scale,
+			velocity = vel,
+			state = inputstate,
+			gameProcessedEvent = processed
+		}
+		self:handleZoom(true, false, falseInput)
+	end)
 
 	local alreadyTagged = collectionServ:GetTagged(ignoreTag)
 	for c, i in pairs(alreadyTagged) do
@@ -282,8 +297,6 @@ end
 --main
 function camController:updateCam(dt)
 	if self.IsInitialized then
-		self:updateCamRot()
-
 		self:createCamTarget() -- create camera reference to avoid issues with using real camera's position with interpolation
 
 		self:updateCamRoot(dt)
@@ -565,29 +578,42 @@ function camController:updateRootOcclusion(dt, desiredPos, offsetY)
 end
 
 function camController:readInput(inputObj, gameProcessed)
+	print(inputObj.UserInputType)
 	local isBegin = inputObj.UserInputState == Enum.UserInputState.Begin and true or false
-	if inputObj.UserInputType == Enum.UserInputType.MouseWheel and not gameProcessed then
-		local scroll = self.zoomInverted and -inputObj.Position.Z or inputObj.Position.Z
-		scroll *= self.zoomSens
-		local min = cameraIsFreeroam and self.zoomMin or self.zoomMinLocked
-		local max = cameraIsFreeroam and self.zoomMax or self.zoomMaxLocked
-		cameraZoom = math.clamp(cameraZoom + scroll, min, max)
-	elseif
-		(
-			inputObj.UserInputType == Enum.UserInputType.MouseButton1
-			or inputObj.UserInputType == Enum.UserInputType.MouseButton2
-		) and not gameProcessed
-	then
-		if isBegin then
+	if not gameProcessed then
+		if inputObj.UserInputType == Enum.UserInputType.MouseMovement or inputObj.UserInputType == Enum.UserInputType.Touch then
+			if playerIsPinching then
+				if inputObj.UserInputState ~= Enum.UserInputState.Change then
+					playerIsPinching = false
+				end
+				return
+			end
+			local deltaRaw = userInput:GetMouseDelta()
+			local inverterX = self.cameraInvertedHorizontal and -1 or 1
+			local inverterY = self.cameraInvertedY and -1 or 1
+			local deltaNew = Vector2.new(
+				math.rad((deltaRaw.X * inverterX) * self.cameraSensitivityX),
+				math.rad((deltaRaw.Y * inverterY) * self.cameraSensitivityY)
+			)
+			cameraRotX = math.clamp(cameraRotX + deltaNew.Y, math.rad(-cameraYRotCap), math.rad(cameraYRotCap))
+			cameraRotY = cameraRotY + deltaNew.X
+		elseif inputObj.UserInputType == Enum.UserInputType.MouseWheel then
+			self:handleZoom(false, false, inputObj)
+		elseif
+			(
+				inputObj.UserInputType == Enum.UserInputType.MouseButton1
+				or inputObj.UserInputType == Enum.UserInputType.MouseButton2
+			) and isBegin
+		then
 			actionPerformTick = os.clock()
+		elseif inputObj.KeyCode == Enum.KeyCode.LeftShift and isBegin then
+			cameraIsFreeroam = not cameraIsFreeroam
+		elseif inputObj.KeyCode == Enum.KeyCode.LeftAlt then
+			cameraMouseLocked = not isBegin
+			userInput.MouseBehavior = isBegin and Enum.MouseBehavior.Default or Enum.MouseBehavior.LockCenter
+		elseif inputObj.KeyCode == Enum.KeyCode.KeypadEight and isBegin then
+			self.debugRender = not self.debugRender
 		end
-	elseif inputObj.KeyCode == Enum.KeyCode.LeftShift and isBegin and not gameProcessed then
-		cameraIsFreeroam = not cameraIsFreeroam
-	elseif inputObj.KeyCode == Enum.KeyCode.LeftAlt and not gameProcessed then
-		cameraMouseLocked = not isBegin
-		userInput.MouseBehavior = isBegin and Enum.MouseBehavior.Default or Enum.MouseBehavior.LockCenter
-	elseif inputObj.KeyCode == Enum.KeyCode.KeypadEight and isBegin then
-		self.debugRender = not self.debugRender
 	end
 end
 
@@ -643,14 +669,6 @@ function camController:applyInvis(dt)
 	invisHighlight.OutlineTransparency = math.clamp(invisOutline, self.invisHighlightOutlineMin, self.invisHighlightMax)
 end
 
-function camController:updateCamRot()
-	if cameraMouseLocked then
-		local delta = self:queryDelta()
-		cameraRotX = math.clamp(cameraRotX + delta.Y, math.rad(-cameraYRotCap), math.rad(cameraYRotCap))
-		cameraRotY = cameraRotY + delta.X
-	end
-end
-
 function camController:debugRenderer()
 	if self.debugRender and cameraRootDebugOutline.Transparency == 1 then
 		cameraRootDebugOutline.Transparency = 0
@@ -690,22 +708,33 @@ function camController:createCamTarget()
 	cameraTarget = CFrame.new((cameraRoot.Position + cameraOffset), cameraRoot.Position)
 end
 
-function camController:queryDelta()
-	local deltaRaw = userInput:GetMouseDelta()
-	local inverterX = self.cameraInvertedHorizontal and -1 or 1
-	local inverterY = self.cameraInvertedY and -1 or 1
-	local deltaNew = Vector2.new(
-		math.rad((deltaRaw.X * inverterX) * self.cameraSensitivityX),
-		math.rad((deltaRaw.Y * inverterY) * self.cameraSensitivityY)
-	)
-	return deltaNew
-end
-
 function camController:queryMouse()
 	local pos = userInput:GetMouseLocation()
 	local mouseViewportRay = camera:ViewportPointToRay(pos.X, pos.Y)
 	local raycast = world:Raycast(mouseViewportRay.Origin, mouseViewportRay.Direction * mouseRayDistance, rayParams)
 	return raycast
+end
+
+function camController:handleZoom(isPinch, isController, inputObj)
+	local min = cameraIsFreeroam and self.zoomMin or self.zoomMinLocked
+	local max = cameraIsFreeroam and self.zoomMax or self.zoomMaxLocked
+	local scroll
+	if not inputObj.gameProcessedEvent then
+		if isPinch then
+			local pinchAmount = inputObj.scale * (inputObj.velocity > 0 and 1 or -1)
+			scroll = self.zoomInverted and -pinchAmount or pinchAmount
+			scroll *= self.zoomSenseMobile
+		elseif isController then
+		else
+			scroll = self.zoomInverted and -inputObj.Position.Z or inputObj.Position.Z
+			scroll *= self.zoomSens
+		end
+	end
+	if scroll == nil then
+		return
+	end
+	playerIsPinching = isPinch
+	cameraZoom = math.clamp(cameraZoom + scroll, min, max)
 end
 
 function camController:instanceNew(obj)

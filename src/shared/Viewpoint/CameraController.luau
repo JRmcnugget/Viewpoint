@@ -1,5 +1,5 @@
 -- {[ Viewpoint Module ]}
--- ver 0.82.0
+-- ver 0.82.1
 -- By josiahgame/JRmcnugget
 
 -- pwease do not look at me! i am unfinished, owo
@@ -63,7 +63,8 @@ local cameraRootColliderRadius = 0.5
 -- for whatever reason, even though the sphere should be perfectly flush against the surface from a spherecast, it somehow catches lower ceilings of parts that form a uniform surface and etc. for whatever reason it is somehow slightly IN the surface
 -- really does not make any sense, maybe floating point issue? regardless, the solution is to pull it back inward and out of the surface
 -- shouldn't really be touched.
-local cameraRootCollideDistScale = 0.99
+local cameraRootCollideDistScale = 0.98
+local cameraOccludeDistScale = 0.90
 local cameraRootOccluded = nil
 
 local zoomSmooth = settings.cameraZoom
@@ -494,7 +495,7 @@ function camController:checkOcclusion()
 	end
 	local ray = world:Spherecast(cameraRoot.Position, cameraColliderRadius, dir, rayParams)
 	if ray then
-		cameraOcclusionForcedZoom = (math.round(ray.Distance * 1000) / 1000)
+		cameraOcclusionForcedZoom = ray.Distance * cameraOccludeDistScale
 		return true
 	else
 		cameraOcclusionForcedZoom = nil

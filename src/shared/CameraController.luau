@@ -214,6 +214,16 @@ function camController:Init(plr)
 
 	self:instanceNewPlayer(plr)
 
+	for c, i in ipairs(players:GetPlayers()) do
+		if i ~= plr then
+			self:instanceNewPlayer(plr)
+		end
+	end
+
+	players.PlayerAdded:Connect(function(player)
+		self:instanceNewPlayer(player)
+	end)
+
 	userInput.InputBegan:Connect(function(input, processed)
 		self:readInput(input, processed)
 	end)

@@ -18,6 +18,7 @@ camController.debugRender = false
 
 -- -- camera
 local ignoreTag = "CameraIgnore"
+local shouldIgnoreOtherPlrs = true
 
 -- sensitivity
 camController.cameraSensitivityX = 0.5
@@ -214,9 +215,9 @@ function camController:Init(plr)
 
 	self:instanceNewPlayer(plr)
 
-	for c, i in ipairs(players:GetPlayers()) do
+	for c, i in pairs(players:GetPlayers()) do
 		if i ~= plr then
-			self:instanceNewPlayer(plr)
+			self:instanceNewPlayer(i)
 		end
 	end
 
@@ -355,25 +356,29 @@ function camController:instanceNewPlayer(plr)
 			camera.CameraType = Enum.CameraType.Scriptable
 			rayParams.FilterDescendantsInstances = rayExclude
 			userInput.MouseBehavior = Enum.MouseBehavior.LockCenter
-		end
 
-		table.clear(playerParts) -- remove stale references
+			table.clear(playerParts) -- remove stale references
+		end
 
 		--instance all playerparts that are added upon the character's immediate creation
 		for c, i in pairs(char:GetDescendants()) do
 			if i.ClassName == "MeshPart" or i.ClassName == "Part" then
 				if localPlrCheck then
 					table.insert(playerParts, i)
+				elseif not shouldIgnoreOtherPlrs then
+					break
 				end
 				i:AddTag(ignoreTag)
 			end
 		end
 
 		--instance any parts that are added further to the character
-		instanceWatcher = playerCharacter.DescendantAdded:Connect(function(obj)
+		instanceWatcher = char.DescendantAdded:Connect(function(obj)
 			if obj:IsA("BasePart") then
 				if localPlrCheck then
 					table.insert(playerParts, obj)
+				elseif not shouldIgnoreOtherPlrs then
+					return
 				end
 				obj:AddTag(ignoreTag)
 			end

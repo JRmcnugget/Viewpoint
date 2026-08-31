@@ -1,0 +1,3 @@
+local camInput = {}
+
+return camInput

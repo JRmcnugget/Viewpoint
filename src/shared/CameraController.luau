@@ -23,7 +23,7 @@ local shouldIgnoreOtherPlrs = true
 -- sensitivity
 camController.cameraSensitivityX = 0.5
 camController.cameraSensitivityY = 0.5
-camController.zoomSens = 1
+camController.zoomSens = 2.25
 
 -- zoom
 camController.zoomInverted = true
